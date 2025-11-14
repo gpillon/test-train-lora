@@ -1,0 +1,193 @@
+---
+# ImageStream per l'immagine del trainer
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: lora-trainer
+  namespace: lora-test  # Cambia con il tuo namespace
+spec:
+  lookupPolicy:
+    local: false
+
+---
+# BuildConfig per costruire l'immagine Docker
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: lora-trainer-build
+  namespace: lora-test  # Cambia con il tuo namespace
+spec:
+  source:
+    type: Git
+    git:
+      uri: https://github.com/gpillon/test-train-lora.git  # Cambia con il tuo repo Git
+      ref: main  # Cambia con il tuo branch
+    contextDir: /  # Root del repository
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: lora-trainer:latest
+  triggers:
+    - type: ConfigChange
+    - type: ImageChange
+      imageChange: {}
+  runPolicy: Serial
+
+---
+# PersistentVolumeClaim per salvare i risultati del training
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lora-training-outputs
+  namespace: lora-test  # Cambia con il tuo namespace
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi  # Aumenta se necessario per dataset grandi
+  storageClassName: gp3  # Cambia con la storage class disponibile nel tuo cluster
+
+---
+# Secret per HuggingFace token (opzionale, se necessario)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: huggingface-token
+  namespace: lora-test  # Cambia con il tuo namespace
+type: Opaque
+stringData:
+  hf_token: "your-huggingface-token-here"  # Sostituisci con il tuo token
+
+---
+# ConfigMap per la configurazione (opzionale, se vuoi sovrascrivere config.yaml)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lora-training-config
+  namespace: lora-test  # Cambia con il tuo namespace
+data:
+  # Puoi aggiungere variabili d'ambiente qui se necessario
+  MODEL_ID: "ibm-granite/granite-4.0-h-1b"
+  DATASET_PATH: "DeepMount00/pii-masking-ita"
+  MAX_SEQ_LENGTH: "1024"
+  BATCH_SIZE: "1"
+  GRADIENT_ACCUMULATION_STEPS: "8"
+  NUM_EPOCHS: "4"
+  LEARNING_RATE: "0.0004"
+
+---
+# Deployment per eseguire il training
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lora-trainer
+  namespace: lora-test  # Cambia con il tuo namespace
+  labels:
+    app: lora-trainer
+spec:
+  replicas: 1  # Solo un training alla volta
+  selector:
+    matchLabels:
+      app: lora-trainer
+  template:
+    metadata:
+      labels:
+        app: lora-trainer
+    spec:
+      # Node selector per GPU (se disponibili)
+      # nodeSelector:
+      #   accelerator: nvidia-tesla-v100  # Cambia con il label dei tuoi nodi GPU
+      
+      # Tolerations per nodi GPU (se necessario)
+      # tolerations:
+      #   - key: nvidia.com/gpu
+      #     operator: Exists
+      #     effect: NoSchedule
+      
+      containers:
+      - name: lora-trainer
+        image: lora-trainer:latest
+        imagePullPolicy: Always
+        
+        # Resources - Aggiusta in base alle tue GPU
+        resources:
+          requests:
+            memory: "16Gi"
+            cpu: "4"
+            # nvidia.com/gpu: "1"  # Decommenta se hai GPU disponibili
+          limits:
+            memory: "32Gi"
+            cpu: "8"
+            # nvidia.com/gpu: "1"  # Decommenta se hai GPU disponibili
+        
+        # Volume mount per salvare gli output
+        volumeMounts:
+        - name: training-outputs
+          mountPath: /workspace/outputs
+        - name: training-models
+          mountPath: /workspace/models
+        
+        # Environment variables
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: huggingface-token
+              key: hf_token
+        - name: MODEL_ID
+          valueFrom:
+            configMapKeyRef:
+              name: lora-training-config
+              key: MODEL_ID
+        - name: DATASET_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: lora-training-config
+              key: DATASET_PATH
+        
+        # Command per eseguire il training
+        command: ["python", "-m", "lora_trainer_app.cli", "train-model"]
+        args:
+          - "--config"
+          - "/workspace/config.yaml"
+          - "--dataset"
+          - "$(DATASET_PATH)"
+          - "--model-id"
+          - "$(MODEL_ID)"
+        
+        # Working directory
+        workingDir: /workspace
+        
+      volumes:
+      - name: training-outputs
+        persistentVolumeClaim:
+          claimName: lora-training-outputs
+      - name: training-models
+        persistentVolumeClaim:
+          claimName: lora-training-outputs  # Stesso PVC per modelli e output
+      
+      restartPolicy: Always
+
+---
+# Service (opzionale, se vuoi esporre qualcosa)
+apiVersion: v1
+kind: Service
+metadata:
+  name: lora-trainer-service
+  namespace: lora-test  # Cambia con il tuo namespace
+spec:
+  selector:
+    app: lora-trainer
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+
