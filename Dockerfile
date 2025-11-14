@@ -1,5 +1,6 @@
 # Dockerfile per LoRA Trainer su OpenShift
-FROM registry.redhat.io/rhoai/odh-training-cuda128-torch28-py312-rhel9@sha256:851f2b31fa418d2eb172ddfa6010851bd5d4f0844d16b2b42a408f2c0b985b86
+#FROM registry.redhat.io/rhoai/odh-training-cuda128-torch28-py312-rhel9@sha256:851f2b31fa418d2eb172ddfa6010851bd5d4f0844d16b2b42a408f2c0b985b86
+FROM image-registry.openshift-image-registry.svc:5000/lora-test/odh-training-cuda128-torch28-py312-rhel9@sha256:9bebe87278d36a16c864536cda0d77e92b95b7059b5915629498adff3fe53966
 
 # Set working directory
 WORKDIR /workspace
