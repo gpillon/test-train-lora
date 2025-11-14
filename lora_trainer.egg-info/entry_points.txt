@@ -1,0 +1,2 @@
+[console_scripts]
+lora-trainer = lora_trainer_app.cli:main
