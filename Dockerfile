@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application code
 COPY lora_trainer_app/ /workspace/lora_trainer_app/
-COPY config.yaml /workspace/
+# COPY config.yaml /workspace/
 COPY download_pii_dataset.py /workspace/
 
 # Set Python path
