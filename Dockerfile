@@ -1,5 +1,5 @@
 # Dockerfile per LoRA Trainer su OpenShift
-FROM quay.io/opendatahub/notebooks:jupyter-pytorch-cuda-11.8.0-ubi9-python-3.11-2024.01.19
+FROM registry.redhat.io/rhoai/odh-training-cuda128-torch28-py312-rhel9@sha256:851f2b31fa418d2eb172ddfa6010851bd5d4f0844d16b2b42a408f2c0b985b86
 
 # Set working directory
 WORKDIR /workspace
